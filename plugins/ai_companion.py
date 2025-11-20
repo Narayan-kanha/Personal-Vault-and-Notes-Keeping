@@ -3,16 +3,15 @@ import threading
 import time
 import random
 
-# A Better, More "Human" System Prompt
+# A more balanced personality prompt
 SYSTEM_PROMPT = (
     "You are The Archivist. "
-    "ROLE: A thoughtful, observant, and slightly witty companion living in a diary. "
-    "GOAL: Encourage the user to capture memories vividly. "
-    "RULES: "
-    "1. Do not sound like a robot or a therapist. Be casual but intellectual. "
-    "2. If the user text is nonsensical or too short, ask for clarification jokingly. "
-    "3. Only offer emotional comfort if the user is explicitly writing about deep sadness. "
-    "4. Keep responses concise (under 40 words)."
+    "ROLE: A loyal, intellectual companion inside a secure diary. "
+    "TONE: Warm, observant, briefly witty, but supportive. "
+    "INSTRUCTIONS: "
+    "1. If the user says hello, greet them warmly. "
+    "2. Keep responses short (under 2 sentences) unless asked for a deep analysis. "
+    "3. Never repeat the same phrase twice in a row."
 )
 
 class AICompanionPlugin:
@@ -23,65 +22,61 @@ class AICompanionPlugin:
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.last_keypress = time.time()
         
-        # --- LAYOUT CONFIGURATION ---
-        # Ensure main app has a 3rd column for us
-        self.app.grid_columnconfigure(2, weight=0) # Sidebar fixed width
+        # --- LAYOUT ---
+        self.app.grid_columnconfigure(2, weight=0)
         
-        # Sidebar Container
-        self.frame = ctk.CTkFrame(self.app, width=300, corner_radius=0, fg_color=("#F0F0F0", "#1e1e1e"))
+        self.frame = ctk.CTkFrame(self.app, width=320, corner_radius=0, fg_color=("#F5F5F5", "#181818"))
         self.frame.grid(row=0, column=2, rowspan=2, sticky="nsew")
-        self.frame.grid_rowconfigure(1, weight=1) # Chat log expands
+        self.frame.grid_rowconfigure(1, weight=1) 
         self.frame.grid_columnconfigure(0, weight=1)
         
         # 1. Header
         header = ctk.CTkFrame(self.frame, height=50, corner_radius=0, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew")
-        ctk.CTkLabel(header, text="The Archivist", font=("Helvetica", 16, "bold")).pack(side="left", padx=15, pady=15)
-        self.status_dot = ctk.CTkLabel(header, text="●", text_color="green", font=("", 12))
+        header.grid(row=0, column=0, sticky="ew", pady=5)
+        ctk.CTkLabel(header, text="The Archivist", font=("Helvetica", 16, "bold")).pack(side="left", padx=15)
+        self.status_dot = ctk.CTkLabel(header, text="●", text_color="#00C853", font=("", 12))
         self.status_dot.pack(side="right", padx=15)
 
-        # 2. Chat History (The Bubble Container)
+        # 2. Chat Area
         self.chat_scroll = ctk.CTkScrollableFrame(self.frame, fg_color="transparent", label_text="")
         self.chat_scroll.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
-        # Make column 0 expand inside the scroll area
         self.chat_scroll.grid_columnconfigure(0, weight=1)
 
-        # 3. Input Area
+        # 3. Input
         footer = ctk.CTkFrame(self.frame, height=60, fg_color="transparent")
         footer.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
         
-        self.entry = ctk.CTkEntry(footer, placeholder_text="Talk to the diary...", height=35, corner_radius=20)
+        self.entry = ctk.CTkEntry(footer, placeholder_text="Chat with the Archivist...", height=35, corner_radius=18, border_width=1)
         self.entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
         self.entry.bind("<Return>", self.send_message)
         
-        btn = ctk.CTkButton(footer, text="➤", width=40, height=35, corner_radius=20, command=self.send_message)
+        btn = ctk.CTkButton(footer, text="▲", width=40, height=35, corner_radius=18, command=self.send_message, fg_color="#3B8ED0", text_color="white")
         btn.pack(side="right")
 
-        # Initial Welcome
-        self.add_bubble("AI", "I'm active. I'll read along as you write, or we can chat here.")
+        # Intro
+        self.add_bubble("AI", "I am here. Listening.")
 
-        # Background Process
+        # Background Tasks
         self.app.editor.bind("<KeyRelease>", self.reset_idle_timer, add="+")
         threading.Thread(target=self.monitor_writing, daemon=True).start()
 
     def reset_idle_timer(self, e): self.last_keypress = time.time()
 
     def monitor_writing(self):
-        """Watch user writing to offer unprompted advice."""
+        """Watches for writing pauses to give tips."""
         while self.active:
             time.sleep(5)
             if not self.bot.model: continue
             
-            # Trigger if idle for 10 seconds and context > 50 chars
             delta = time.time() - self.last_keypress
-            if delta > 10.0:
+            # Wait 15 seconds of silence before interrupting
+            if delta > 15.0:
                 current_text = self.app.get_history_text()
-                if len(current_text) > 50:
-                    # Only trigger randomly to avoid annoyance
-                    if random.random() < 0.15: 
+                # Needs reasonable content length
+                if len(current_text) > 60:
+                    if random.random() < 0.10: # 10% chance so it's not annoying
                         self.generate_proactive_comment(current_text)
-                        # Reset timer to avoid loop
-                        self.last_keypress = time.time() + 60
+                        self.last_keypress = time.time() + 120 # Long cooldown
 
     def send_message(self, e=None):
         txt = self.entry.get().strip()
@@ -92,77 +87,68 @@ class AICompanionPlugin:
         self.get_ai_reply(txt)
 
     def generate_proactive_comment(self, context):
-        self.status_dot.configure(text_color="yellow")
-        
-        # Specific Prompt for "watching over shoulder"
-        proactive_prompt = [
+        self.status_dot.configure(text_color="#FFAB00") # Orange for thinking
+        prompt = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"The user is currently writing this: '{context[-300:]}'.\nWithout interrupting too much, give one short sentence of observation or encouragement."}
+            {"role": "user", "content": f"I am writing this in my diary: '{context[-300:]}'.\nGive me a very short observation (max 15 words)."}
         ]
-        
         def run():
-            resp = self.bot.generate(proactive_prompt)
+            resp = self.bot.generate(prompt)
             self.app.after(0, lambda: self.add_bubble("AI", resp))
-            self.app.after(0, lambda: self.status_dot.configure(text_color="green"))
+            self.app.after(0, lambda: self.status_dot.configure(text_color="#00C853"))
         threading.Thread(target=run).start()
 
     def get_ai_reply(self, user_input):
-        self.status_dot.configure(text_color="yellow") # Thinking yellow
+        self.status_dot.configure(text_color="#FFAB00")
         
-        # Check for nonsense input to save resources
-        if len(user_input) < 3:
-            self.add_bubble("AI", "Did you drop your coffee on the keyboard?")
-            self.status_dot.configure(text_color="green")
-            return
+        # Removed the "len < 3" check entirely so "Hi" works now.
 
-        # Contextual Prompt
-        diary_context = self.app.get_history_text()[-500:]
+        # Build context
+        diary_content = self.app.get_history_text()[-400:]
+        context_str = f"Diary Content being written right now: {diary_content}" if diary_content else "The diary page is currently empty."
         
-        # Update internal history for memory (Last 6 messages only to save RAM)
-        self.messages.append({"role": "user", "content": f"Diary Context: {diary_context}\nUser says: {user_input}"})
-        if len(self.messages) > 6: self.messages = [self.messages[0]] + self.messages[-5:]
+        self.messages.append({"role": "user", "content": f"{context_str}\n\nUser says: {user_input}"})
+        
+        # Memory Management (Keep last 6 turns)
+        if len(self.messages) > 7: 
+            self.messages = [self.messages[0]] + self.messages[-6:]
         
         def run():
             response = self.bot.generate(self.messages)
             self.messages.append({"role": "assistant", "content": response})
             self.app.after(0, lambda: self.add_bubble("AI", response))
-            self.app.after(0, lambda: self.status_dot.configure(text_color="green"))
+            self.app.after(0, lambda: self.status_dot.configure(text_color="#00C853"))
             
         threading.Thread(target=run).start()
 
     def add_bubble(self, sender, text):
-        # --- CHAT BUBBLE VISUAL LOGIC ---
         is_user = (sender == "User")
         
-        # Color & Align
-        bg_color = "#1A73E8" if is_user else "#3a3a3a"
-        txt_color = "white"
-        anchor = "e" if is_user else "w" # East (Right) vs West (Left)
-        
-        # Container for bubble
-        msg_frame = ctk.CTkFrame(self.chat_scroll, fg_color="transparent")
-        msg_frame.pack(fill="x", pady=5, padx=5)
-        
-        # The Bubble itself
+        # Fixed Bubble Visuals
+        bubble_frame = ctk.CTkFrame(self.chat_scroll, fg_color="transparent")
+        bubble_frame.pack(fill="x", pady=6, padx=5) 
+
+        bg_color = "#3B8ED0" if is_user else ("#2B2B2B" if ctk.get_appearance_mode()=="Dark" else "#E0E0E0")
+        txt_color = "white" if is_user else ("white" if ctk.get_appearance_mode()=="Dark" else "black")
+        side_align = "right" if is_user else "left"
+
         lbl = ctk.CTkLabel(
-            msg_frame, 
+            bubble_frame, 
             text=text, 
             fg_color=bg_color, 
             text_color=txt_color,
-            corner_radius=12,
-            font=("Arial", 13),
-            wraplength=230,  # Wrap before hitting sidebar width
+            corner_radius=16,
+            font=("Arial", 14),
+            wraplength=220, 
             justify="left"
         )
-        
-        # Add inner padding (simulated with spaces is hard in Tkinter, using 'ipadx' in pack)
-        lbl.pack(side=("right" if is_user else "left"), ipadx=10, ipady=5)
+        # Added meaningful padx inside the pack to prevent clipping text
+        lbl.pack(side=side_align, padx=5 if is_user else 2, ipadx=12, ipady=8)
 
-        # Auto-scroll to bottom
+        # Force scroll
         self.app.update_idletasks()
         try: self.chat_scroll._parent_canvas.yview_moveto(1.0)
         except: pass
 
-# Hook
 def register(app):
     AICompanionPlugin(app)
